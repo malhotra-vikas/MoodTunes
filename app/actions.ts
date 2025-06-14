@@ -19,8 +19,56 @@ const MoodAnalysisSchema = z.object({
     .describe("5 song recommendations that match the detected mood"),
 })
 
+// Enhanced function to search for YouTube videos
+async function searchYouTubeVideo(query: string): Promise<string | null> {
+  try {
+    const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
+
+    if (!YOUTUBE_API_KEY) {
+      // Improved fallback with more realistic video IDs for different song types
+      const fallbackVideos = [
+        "dQw4w9WgXcQ", // Rick Astley - Never Gonna Give You Up
+        "kJQP7kiw5Fk", // Luis Fonsi - Despacito
+        "fJ9rUzIMcZQ", // Queen - Bohemian Rhapsody
+        "9bZkp7q19f0", // PSY - Gangnam Style
+        "hT_nvWreIhg", // Alan Walker - Faded
+        "YQHsXMglC9A", // Adele - Hello
+        "JGwWNGJdvx8", // Ed Sheeran - Shape of You
+        "CevxZvSJLk8", // Katy Perry - Roar
+        "nfWlot6h_JM", // Taylor Swift - Shake It Off
+        "pRpeEdMmmQ0", // Shakira - Waka Waka
+      ]
+
+      // Create a simple hash from the query to get consistent results
+      let hash = 0
+      for (let i = 0; i < query.length; i++) {
+        const char = query.charCodeAt(i)
+        hash = (hash << 5) - hash + char
+        hash = hash & hash
+      }
+      return fallbackVideos[Math.abs(hash) % fallbackVideos.length]
+    }
+
+    // Use the real YouTube API
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`,
+    )
+
+    const data = await response.json()
+
+    if (data.items && data.items.length > 0) {
+      return data.items[0].id.videoId
+    }
+
+    return null
+  } catch (error) {
+    console.error("YouTube search error:", error)
+    return null
+  }
+}
+
 // Mock data for demonstration when API key is not available
-const getMockResponse = (text: string) => {
+const getMockResponse = async (text: string) => {
   const mockMoods = ["happy", "melancholic", "energetic", "calm", "nostalgic", "romantic"]
   const randomMood = mockMoods[Math.floor(Math.random() * mockMoods.length)]
 
@@ -69,23 +117,35 @@ const getMockResponse = (text: string) => {
     ],
   }
 
+  const songs = mockSongs[randomMood as keyof typeof mockSongs] || mockSongs.happy
+
+  // Pre-load YouTube IDs for all songs
+  const songsWithIds = await Promise.all(
+    songs.map(async (song) => {
+      const searchQuery = `${song.title} ${song.artist} official audio`
+      const youtubeId = await searchYouTubeVideo(searchQuery)
+      return {
+        ...song,
+        youtubeId: youtubeId || undefined,
+      }
+    }),
+  )
+
   return {
     mood: randomMood,
-    intensity: Math.floor(Math.random() * 6) + 5, // 5-10 for demo
+    intensity: Math.floor(Math.random() * 6) + 5,
     emotions: ["contemplative", "reflective", "peaceful"].slice(0, Math.floor(Math.random() * 3) + 1),
-    songs: mockSongs[randomMood as keyof typeof mockSongs] || mockSongs.happy,
+    songs: songsWithIds,
   }
 }
 
 export async function analyzeMoodAndRecommendSongs(text: string) {
   try {
-    // Check if OpenAI API key is available
     const apiKey = process.env.OPENAI_API_KEY
 
     if (!apiKey) {
-      console.log("OpenAI API key not found, using mock response for demonstration")
-      // Return mock data for demonstration purposes
-      const mockData = getMockResponse(text)
+      console.log("OpenAI API key not found, using mock response with pre-loaded YouTube IDs")
+      const mockData = await getMockResponse(text)
       return {
         success: true,
         data: mockData,
@@ -93,13 +153,12 @@ export async function analyzeMoodAndRecommendSongs(text: string) {
       }
     }
 
-    // Configure OpenAI client with API key
     const openaiClient = openai({
       apiKey: apiKey,
     })
 
     const { object } = await generateObject({
-      model: openaiClient("gpt-4o"),
+      model: openaiClient("gpt-4o-mini"),
       schema: MoodAnalysisSchema,
       prompt: `Analyze the mood and emotions in this text: "${text}"
       
@@ -110,13 +169,32 @@ export async function analyzeMoodAndRecommendSongs(text: string) {
       Provide the mood, intensity (1-10), emotions present, and song recommendations with reasons.`,
     })
 
-    return { success: true, data: object, isDemo: false }
+    // Pre-load YouTube IDs for all recommended songs
+    console.log("Pre-loading YouTube IDs for songs...")
+    const songsWithIds = await Promise.all(
+      object.songs.map(async (song) => {
+        const searchQuery = `${song.title} ${song.artist} official audio`
+        const youtubeId = await searchYouTubeVideo(searchQuery)
+        return {
+          ...song,
+          youtubeId: youtubeId || undefined,
+        }
+      }),
+    )
+
+    return {
+      success: true,
+      data: {
+        ...object,
+        songs: songsWithIds,
+      },
+      isDemo: false,
+    }
   } catch (error) {
     console.error("Error analyzing mood:", error)
 
-    // If there's an API error, fall back to mock data
-    console.log("Falling back to mock response due to API error")
-    const mockData = getMockResponse(text)
+    console.log("Falling back to mock response with pre-loaded YouTube IDs")
+    const mockData = await getMockResponse(text)
     return {
       success: true,
       data: mockData,

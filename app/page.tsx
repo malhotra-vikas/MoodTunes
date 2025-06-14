@@ -21,7 +21,6 @@ import {
   Copy,
   Check,
 } from "lucide-react"
-import { SetupGuide } from "@/components/setup-guide"
 import {
   generateShareText,
   generateShareUrl,
@@ -188,7 +187,7 @@ export default function MoodMusicApp() {
                   {isPending ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Analyzing your mood...
+                      Analyzing mood & preparing songs...
                     </>
                   ) : (
                     <>

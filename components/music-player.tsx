@@ -20,6 +20,7 @@ export function MusicPlayer() {
 
   const [isMuted, setIsMuted] = useState(false)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
+  const [playerState, setPlayerState] = useState<string>("loading")
 
   useEffect(() => {
     // Load YouTube IFrame API
@@ -30,6 +31,7 @@ export function MusicPlayer() {
       firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag)
 
       window.onYouTubeIframeAPIReady = () => {
+        console.log("YouTube API ready")
         setIsPlayerReady(true)
       }
     } else {
@@ -38,32 +40,54 @@ export function MusicPlayer() {
   }, [])
 
   useEffect(() => {
-    if (isPlayerReady && currentSong?.youtubeId && !playerRef.current) {
-      playerRef.current = new window.YT.Player("youtube-player", {
-        height: "0",
-        width: "0",
-        videoId: currentSong.youtubeId,
-        playerVars: {
-          autoplay: 1,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          modestbranding: 1,
-          rel: 0,
-        },
-        events: {
-          onReady: () => {
-            playerRef.current.setVolume(volume)
+    if (isPlayerReady && currentSong?.youtubeId) {
+      if (!playerRef.current) {
+        console.log("Creating YouTube player with video:", currentSong.youtubeId)
+        playerRef.current = new window.YT.Player("youtube-player", {
+          height: "0",
+          width: "0",
+          videoId: currentSong.youtubeId,
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            rel: 0,
           },
-          onStateChange: (event: any) => {
-            // Handle player state changes if needed
+          events: {
+            onReady: (event: any) => {
+              console.log("YouTube player ready")
+              event.target.setVolume(volume)
+              setPlayerState("ready")
+            },
+            onStateChange: (event: any) => {
+              const state = event.data
+              if (state === window.YT.PlayerState.ENDED) {
+                nextSong()
+              } else if (state === window.YT.PlayerState.PLAYING) {
+                setPlayerState("playing")
+              } else if (state === window.YT.PlayerState.PAUSED) {
+                setPlayerState("paused")
+              } else if (state === window.YT.PlayerState.BUFFERING) {
+                setPlayerState("buffering")
+              }
+            },
+            onError: (event: any) => {
+              console.error("YouTube player error:", event.data)
+              setPlayerState("error")
+              // Try next song on error
+              setTimeout(() => nextSong(), 2000)
+            },
           },
-        },
-      })
-    } else if (playerRef.current && currentSong?.youtubeId) {
-      playerRef.current.loadVideoById(currentSong.youtubeId)
+        })
+      } else {
+        console.log("Loading new video:", currentSong.youtubeId)
+        setPlayerState("loading")
+        playerRef.current.loadVideoById(currentSong.youtubeId)
+      }
     }
-  }, [isPlayerReady, currentSong, volume])
+  }, [isPlayerReady, currentSong?.youtubeId, volume, nextSong])
 
   const handleVolumeChange = (newVolume: number[]) => {
     const vol = newVolume[0]
@@ -85,6 +109,8 @@ export function MusicPlayer() {
     return null
   }
 
+  const isActuallyLoading = isLoading || playerState === "loading" || playerState === "buffering"
+
   return (
     <>
       {/* Hidden YouTube Player */}
@@ -98,7 +124,7 @@ export function MusicPlayer() {
               {/* Song Info */}
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                  {isLoading ? (
+                  {isActuallyLoading ? (
                     <Loader2 className="w-6 h-6 text-white animate-spin" />
                   ) : (
                     <Music className="w-6 h-6 text-white" />
@@ -106,7 +132,13 @@ export function MusicPlayer() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="text-white font-semibold truncate">{currentSong.title}</h3>
-                  <p className="text-gray-300 text-sm truncate">{currentSong.artist}</p>
+                  <p className="text-gray-300 text-sm truncate">
+                    {currentSong.artist}
+                    {playerState === "error" && (
+                      <span className="text-red-400 ml-2">(Error loading - trying next song...)</span>
+                    )}
+                    {isActuallyLoading && <span className="text-blue-400 ml-2">(Loading...)</span>}
+                  </p>
                 </div>
               </div>
 
@@ -120,11 +152,11 @@ export function MusicPlayer() {
                   onClick={togglePlayPause}
                   size="sm"
                   className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white w-10 h-10 rounded-full"
-                  disabled={isLoading}
+                  disabled={isActuallyLoading || playerState === "error"}
                 >
-                  {isLoading ? (
+                  {isActuallyLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : isPlaying ? (
+                  ) : isPlaying && playerState === "playing" ? (
                     <Pause className="w-4 h-4" />
                   ) : (
                     <Play className="w-4 h-4" />

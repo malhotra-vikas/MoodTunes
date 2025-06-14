@@ -47,19 +47,26 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     setCurrentSong(song)
     setCurrentIndex(index)
 
-    // Search for the song on YouTube if no ID is provided
-    if (!song.youtubeId) {
-      try {
-        const searchQuery = `${song.title} ${song.artist} official audio`
-        const response = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchQuery)}`)
-        const data = await response.json()
+    // If YouTube ID is already available, play immediately
+    if (song.youtubeId) {
+      console.log(`Playing song with pre-loaded ID: ${song.youtubeId}`)
+      setIsLoading(false)
+      setIsPlaying(true)
+      return
+    }
 
-        if (data.videoId) {
-          song.youtubeId = data.videoId
-        }
-      } catch (error) {
-        console.error("Error searching for song:", error)
+    // Fallback: search for the song if no ID is available (shouldn't happen with new system)
+    try {
+      const searchQuery = `${song.title} ${song.artist} official audio`
+      const response = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchQuery)}`)
+      const data = await response.json()
+
+      if (data.videoId) {
+        song.youtubeId = data.videoId
+        console.log(`Found YouTube ID via fallback search: ${data.videoId}`)
       }
+    } catch (error) {
+      console.error("Error searching for song:", error)
     }
 
     setIsLoading(false)
