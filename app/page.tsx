@@ -158,7 +158,7 @@ export default function MoodMusicApp() {
               </h1>
             </div>
             <p className="text-xl text-purple-200 max-w-2xl mx-auto">
-              Share your thoughts and feelings, and let AI discover the perfect soundtrack for your mood
+              Share your thoughts and feelings, and let MoodTunes AI discover the perfect soundtrack for your mood
             </p>
           </div>
 
